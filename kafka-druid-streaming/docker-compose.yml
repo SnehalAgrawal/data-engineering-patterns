@@ -1,0 +1,97 @@
+# Kafka (KRaft, no ZooKeeper) + Apache Druid 38, based on Druid's own docker-compose for 38.0.0:
+# https://github.com/apache/druid/blob/druid-38.0.0/distribution/docker/docker-compose.yml
+# Druid publishes amd64 images only; on Apple silicon they run under emulation.
+# Only Kafka (9092) and the Druid router (8888: web console + SQL API) are published to the host.
+
+x-druid: &druid
+  image: apache/druid:38.0.0
+  platform: linux/amd64
+  env_file: druid.env
+  depends_on: [zookeeper, postgres]
+  restart: unless-stopped
+
+services:
+  kafka:
+    image: apache/kafka:4.3.2
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      # Druid reaches Kafka inside the Docker network (kafka:29092); the Node.js app on the host uses localhost:9092.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  # Druid's metadata store and service discovery (versions from Druid's own compose file)
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: druid
+      POSTGRES_PASSWORD: FoolishPassword
+      POSTGRES_DB: druid
+    volumes:
+      - metadata_data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: zookeeper:3.5.10
+    environment:
+      ZOO_MY_ID: 1
+
+  coordinator:
+    <<: *druid
+    command: [coordinator]
+    volumes:
+      - druid_shared:/opt/shared
+      - coordinator_var:/opt/druid/var
+
+  broker:
+    <<: *druid
+    command: [broker]
+    depends_on: [zookeeper, postgres, coordinator]
+    volumes:
+      - broker_var:/opt/druid/var
+
+  historical:
+    <<: *druid
+    command: [historical]
+    depends_on: [zookeeper, postgres, coordinator]
+    volumes:
+      - druid_shared:/opt/shared
+      - historical_var:/opt/druid/var
+
+  middlemanager:
+    <<: *druid
+    command: [middleManager]
+    depends_on: [zookeeper, postgres, coordinator]
+    volumes:
+      - druid_shared:/opt/shared
+      - middle_var:/opt/druid/var
+
+  router:
+    <<: *druid
+    command: [router]
+    depends_on: [zookeeper, postgres, coordinator]
+    ports:
+      - "8888:8888"
+    volumes:
+      - router_var:/opt/druid/var
+
+volumes:
+  kafka_data: {}
+  metadata_data: {}
+  druid_shared: {}
+  coordinator_var: {}
+  broker_var: {}
+  historical_var: {}
+  middle_var: {}
+  router_var: {}

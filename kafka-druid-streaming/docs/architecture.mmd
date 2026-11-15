@@ -1,0 +1,10 @@
+%% Source for architecture.svg (hand-drawn SVG kept in sync with this file)
+flowchart LR
+  B["Browser / simulate.js"] -->|"POST /click"| APP["Node.js app<br/>Express + kafkajs"]
+  APP -->|"produce JSON event<br/>key = userId"| K[("Kafka topic<br/>clicks")]
+  K -->|"Kafka supervisor<br/>consumes continuously"| D["Druid ingestion task<br/>(MiddleManager)"]
+  D -->|"recent data"| BR["Druid router → broker"]
+  D -->|"hourly segments, handed off"| H["Druid historical"]
+  H -->|"older data"| BR
+  B -->|"GET /stats every 2 s"| APP
+  APP -->|"Druid SQL via router :8888"| BR

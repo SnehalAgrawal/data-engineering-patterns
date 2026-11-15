@@ -8,7 +8,7 @@ Part of [snehalagrawal.com/work](https://snehalagrawal.com/work/). Each example 
 
 | Example | What it shows | Status |
 |---|---|---|
-| `kafka-druid-streaming/` | Click events from a Node.js producer through Kafka into Apache Druid's streaming ingestion, queried through an API | Planned (moving from [real-time-analytics-druid-kafka](https://github.com/SnehalAgrawal/real-time-analytics-druid-kafka)) |
+| [`kafka-druid-streaming/`](kafka-druid-streaming/) | Click events from a Node.js API through Kafka into Druid's streaming ingestion, queried with Druid SQL; measured click-to-query latency and memory | Ready (from [real-time-analytics-druid-kafka](https://github.com/SnehalAgrawal/real-time-analytics-druid-kafka)) |
 | `druid-superset-dashboards/` | Batch-loading clickstream data into Druid and building Apache Superset charts on it | Planned (moving from [data-visualization-druid-superset](https://github.com/SnehalAgrawal/data-visualization-druid-superset)) |
 | `spark-postgres-etl/` | A PySpark job that reads from PostgreSQL and writes Parquet | Planned (moving from [ai-analytics-postgres-spark-weaviate](https://github.com/SnehalAgrawal/ai-analytics-postgres-spark-weaviate)) |
 | `databricks-delta-medallion/` | Bronze, silver, and gold Delta tables on Databricks | Planned |

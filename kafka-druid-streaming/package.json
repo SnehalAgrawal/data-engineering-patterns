@@ -1,0 +1,20 @@
+{
+  "name": "kafka-druid-streaming",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Click events from a Node.js API through Kafka into Apache Druid's streaming ingestion, queried with Druid SQL.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "node --env-file-if-exists=.env scripts/setup.js",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "simulate": "node --env-file-if-exists=.env scripts/simulate.js",
+    "latency": "node --env-file-if-exists=.env scripts/measure-latency.js"
+  },
+  "dependencies": {
+    "express": "5.3.0",
+    "kafkajs": "2.2.4"
+  }
+}

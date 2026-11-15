@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clickstream: Kafka → Druid</title>
+    <style>
+      :root {
+        --bg: #fafaf9;
+        --surface: #ffffff;
+        --text: #1c1917;
+        --muted: #78716c;
+        --border: #e7e5e4;
+        --accent: #4f46e5;
+        --bar: #c7d2fe;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0d14;
+          --surface: #131623;
+          --text: #e7e5e4;
+          --muted: #a8a29e;
+          --border: #262a3b;
+          --accent: #8b8ff8;
+          --bar: #3730a3;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 880px; margin: 0 auto; padding: 32px 20px 48px; }
+      h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+      .subtitle { margin: 4px 0 24px; color: var(--muted); }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+      button {
+        padding: 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+      .tile, .panel {
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+      .tile .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+      .tile .value { margin-top: 4px; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .panels { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; }
+      h2 { margin: 0 0 12px; font-size: 15px; }
+      table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+      th { color: var(--muted); font-size: 12px; font-weight: 500; text-align: left; padding: 0 0 6px; }
+      td { padding: 5px 0; }
+      td.num, th.num { text-align: right; width: 64px; }
+      .bar-cell { width: 45%; padding-right: 12px; }
+      .bar { height: 10px; border-radius: 3px; background: var(--bar); }
+      .empty { color: var(--muted); }
+      footer { margin-top: 16px; color: var(--muted); font-size: 13px; }
+      @media (max-width: 640px) {
+        .tiles, .panels { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Clickstream analytics</h1>
+      <p class="subtitle">Clicks go through Kafka into Apache Druid; this page queries Druid SQL every 2 seconds.</p>
+
+      <div class="actions">
+        <button class="primary" id="one">Send a click</button>
+        <button id="twenty">Send 20 clicks</button>
+      </div>
+
+      <div class="tiles">
+        <div class="tile"><div class="label">Events in Druid</div><div class="value" id="events">–</div></div>
+        <div class="tile"><div class="label">Latest event</div><div class="value" id="latest">–</div></div>
+        <div class="tile"><div class="label">Druid SQL time</div><div class="value" id="query">–</div></div>
+      </div>
+
+      <div class="panels">
+        <section class="panel">
+          <h2>Top pages</h2>
+          <table>
+            <thead><tr><th>Page</th><th></th><th class="num">Views</th><th class="num">Users</th></tr></thead>
+            <tbody id="pages"></tbody>
+          </table>
+        </section>
+        <section class="panel">
+          <h2>Views per minute (last 10 minutes, UTC)</h2>
+          <table>
+            <thead><tr><th>Minute</th><th></th><th class="num">Views</th></tr></thead>
+            <tbody id="minutes"></tbody>
+          </table>
+        </section>
+      </div>
+
+      <footer id="status">Loading…</footer>
+    </main>
+
+    <script>
+      const pages = ["/home", "/pricing", "/products", "/docs", "/blog", "/about"];
+      const $ = (id) => document.getElementById(id);
+      // Page names come from user input: escape them before putting them into HTML.
+      const escape = (value) =>
+        String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+      async function sendClick() {
+        const userId = `user-${Math.floor(Math.random() * 200)}`;
+        const page = pages[Math.floor(Math.random() * pages.length)];
+        await fetch("/click", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, page }),
+        });
+      }
+
+      function rows(target, items, cells) {
+        const max = Math.max(1, ...items.map((item) => item.views));
+        target.innerHTML = items.length
+          ? items
+              .map((item) => {
+                const [first, ...rest] = cells(item);
+                const bar = `<td class="bar-cell"><div class="bar" style="width:${(item.views / max) * 100}%"></div></td>`;
+                return `<tr><td>${escape(first)}</td>${bar}${rest.map((c) => `<td class="num">${escape(c)}</td>`).join("")}</tr>`;
+              })
+              .join("")
+          : `<tr><td class="empty" colspan="4">No data yet</td></tr>`;
+      }
+
+      async function refresh() {
+        try {
+          const res = await fetch("/stats");
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          $("events").textContent = Number(data.totals.events).toLocaleString();
+          // Druid timestamps are UTC; show them as UTC everywhere on the page.
+          $("latest").textContent = data.totals.latest ? `${data.totals.latest.slice(11, 19)} UTC` : "–";
+          $("query").textContent = data.queryMs === null ? "–" : `${data.queryMs} ms`;
+          rows($("pages"), data.topPages, (r) => [r.page, r.views, r.users]);
+          rows($("minutes"), data.perMinute, (r) => [r.bucket.slice(11, 16), r.views]);
+          $("status").textContent = `Updated ${new Date().toISOString().slice(11, 19)} UTC`;
+        } catch (error) {
+          $("status").textContent = `Could not load stats: ${error.message}`;
+        }
+      }
+
+      $("one").addEventListener("click", sendClick);
+      $("twenty").addEventListener("click", () => Promise.all(Array.from({ length: 20 }, sendClick)));
+      refresh();
+      setInterval(refresh, 2000);
+    </script>
+  </body>
+</html>
