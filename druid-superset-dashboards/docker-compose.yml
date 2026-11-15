@@ -1,0 +1,104 @@
+# Apache Druid 38 (based on Druid's own docker-compose for 38.0.0) + Apache Superset 6.1.0.
+# https://github.com/apache/druid/blob/druid-38.0.0/distribution/docker/docker-compose.yml
+# Druid publishes amd64 images only; on Apple silicon they run under emulation.
+# Published to the host: Druid router 8888 (console + SQL API) and Superset 8088.
+
+x-druid: &druid
+  image: apache/druid:38.0.0
+  platform: linux/amd64
+  env_file: druid.env
+  depends_on: [zookeeper, postgres]
+  restart: unless-stopped
+
+services:
+  # Druid's metadata store and service discovery (versions from Druid's own compose file)
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: druid
+      POSTGRES_PASSWORD: FoolishPassword
+      POSTGRES_DB: druid
+    volumes:
+      - metadata_data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: zookeeper:3.5.10
+    environment:
+      ZOO_MY_ID: 1
+
+  coordinator:
+    <<: *druid
+    command: [coordinator]
+    volumes:
+      - druid_shared:/opt/shared
+      - coordinator_var:/opt/druid/var
+
+  broker:
+    <<: *druid
+    command: [broker]
+    depends_on: [zookeeper, postgres, coordinator]
+    volumes:
+      - broker_var:/opt/druid/var
+
+  historical:
+    <<: *druid
+    command: [historical]
+    depends_on: [zookeeper, postgres, coordinator]
+    volumes:
+      - druid_shared:/opt/shared
+      - historical_var:/opt/druid/var
+
+  middlemanager:
+    <<: *druid
+    command: [middleManager]
+    depends_on: [zookeeper, postgres, coordinator]
+    volumes:
+      - druid_shared:/opt/shared
+      - middle_var:/opt/druid/var
+      # Ingestion tasks run here and read the generated file from /data
+      - ./data:/data:ro
+
+  router:
+    <<: *druid
+    command: [router]
+    depends_on: [zookeeper, postgres, coordinator]
+    ports:
+      - "8888:8888"
+    volumes:
+      - router_var:/opt/druid/var
+
+  superset:
+    build: ./superset
+    image: druid-superset-dashboards/superset:6.1.0
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      # Local use only. Set your own value in .env for anything else.
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-local-only-not-a-secret}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py:ro
+      - ./superset/provision.py:/app/provision.py:ro
+      - superset_home:/app/superset_home
+    # First start: create the metadata database and the admin user, then serve.
+    command:
+      - sh
+      - -c
+      - >
+        superset db upgrade &&
+        (superset fab create-admin --username admin --firstname Local --lastname Admin
+        --email admin@example.com --password "$$SUPERSET_ADMIN_PASSWORD" || true) &&
+        superset init &&
+        exec /usr/bin/run-server.sh
+    restart: unless-stopped
+
+volumes:
+  metadata_data: {}
+  druid_shared: {}
+  coordinator_var: {}
+  broker_var: {}
+  historical_var: {}
+  middle_var: {}
+  router_var: {}
+  superset_home: {}
