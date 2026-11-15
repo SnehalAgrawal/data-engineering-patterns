@@ -10,7 +10,7 @@ Part of [snehalagrawal.com/work](https://snehalagrawal.com/work/). Each example 
 |---|---|---|
 | [`kafka-druid-streaming/`](kafka-druid-streaming/) | Click events from a Node.js API through Kafka into Druid's streaming ingestion, queried with Druid SQL; measured click-to-query latency and memory | Ready (from [real-time-analytics-druid-kafka](https://github.com/SnehalAgrawal/real-time-analytics-druid-kafka)) |
 | [`druid-superset-dashboards/`](druid-superset-dashboards/) | SQL-based batch ingestion into Druid, raw and rolled up by hour (measured rows, storage, sketch accuracy, query time), with a Superset dashboard created from code | Ready (from [data-visualization-druid-superset](https://github.com/SnehalAgrawal/data-visualization-druid-superset)) |
-| `spark-postgres-etl/` | A PySpark job that reads from PostgreSQL and writes Parquet | Planned (moving from [ai-analytics-postgres-spark-weaviate](https://github.com/SnehalAgrawal/ai-analytics-postgres-spark-weaviate)) |
+| [`spark-postgres-etl/`](spark-postgres-etl/) | Spark extracting a 3-million-row PostgreSQL table: parallel JDBC reads (measured 3× faster), date-partitioned Parquet with pruning, and incremental loads with a watermark | Ready (Spark part of [ai-analytics-postgres-spark-weaviate](https://github.com/SnehalAgrawal/ai-analytics-postgres-spark-weaviate)) |
 | `databricks-delta-medallion/` | Bronze, silver, and gold Delta tables on Databricks | Planned |
 
 ## Conventions

@@ -1,0 +1,44 @@
+# PostgreSQL 17 (the source) + Apache Spark 4.2.1 (the ETL jobs), both native on arm64 and amd64.
+# Postgres generates 3,000,000 tracking events on its first start (postgres/*.sql).
+# Spark jobs run on demand:  docker compose run --rm spark <job>.py [options]
+
+services:
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: etl
+      POSTGRES_PASSWORD: etl
+      POSTGRES_DB: tracking
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+      - ./sql:/sql:ro
+    healthcheck:
+      # Over TCP: during first-start seeding Postgres runs a socket-only temporary server, so this
+      # only succeeds once seeding has finished and the real server is listening.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U etl -d tracking"]
+      interval: 3s
+      retries: 60
+
+  spark:
+    build: ./spark
+    image: spark-postgres-etl/spark:4.2.1
+    profiles: [jobs]  # not started by `docker compose up`; used with `docker compose run`
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PG_URL: jdbc:postgresql://postgres:5432/tracking
+      PG_USER: etl
+      PG_PASSWORD: etl
+      LAKE: /lake
+    volumes:
+      - ./jobs:/jobs:ro
+      - ./lake:/lake
+    working_dir: /jobs
+    entrypoint: ["/opt/spark/bin/spark-submit", "--master", "local[*]", "--driver-memory", "2g"]
+
+volumes:
+  pg_data: {}
