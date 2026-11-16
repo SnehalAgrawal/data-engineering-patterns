@@ -1,0 +1,5 @@
+# Pinned to releases at least two weeks old on 2026-11-16
+langgraph==1.2.19
+langchain-core==1.7.4
+sqlglot==30.27.0
+psycopg[binary]==3.3.6

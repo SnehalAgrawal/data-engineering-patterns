@@ -1,0 +1,27 @@
+%% Generated from the compiled graph: python -c "from src.graph import build; print(build().get_graph().draw_mermaid())"
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	generate_sql(generate_sql)
+	check_sql(check_sql)
+	execute(execute)
+	give_up(give_up)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> generate_sql;
+	check_sql -. &nbsp;refused&nbsp; .-> __end__;
+	check_sql -. &nbsp;ok&nbsp; .-> execute;
+	check_sql -. &nbsp;repair&nbsp; .-> generate_sql;
+	check_sql -.-> give_up;
+	execute -. &nbsp;done&nbsp; .-> __end__;
+	execute -. &nbsp;repair&nbsp; .-> generate_sql;
+	execute -.-> give_up;
+	generate_sql -. &nbsp;refused&nbsp; .-> __end__;
+	generate_sql -. &nbsp;check&nbsp; .-> check_sql;
+	give_up --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
