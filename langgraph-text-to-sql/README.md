@@ -2,6 +2,8 @@
 
 A LangGraph agent that answers plain-English questions with SQL over a PostgreSQL database. Two layers keep it read-only (a SQL guard and a read-only database user), and a repair loop shows the model its own errors. On 30 questions with known answers, two small local models each got 22 right on the first attempt, and the repair loop fixed none of the rest: most wrong answers came from queries that ran without error, which an error-driven loop never sees. None of the 6 write requests changed a row.
 
+It accompanies the article [LangGraph in Practice: A Text-to-SQL Agent You Can Measure](https://snehalagrawal.com/articles/langgraph-in-practice-a-text-to-sql-agent-you-can-measure/) on snehalagrawal.com.
+
 ## What it shows
 
 - **A graph, not a chain.** Generate SQL, check it, run it, and, on a parse, planning, or runtime error, send the error back to the model to fix, up to 2 times ([`src/graph.py`](src/graph.py)).
