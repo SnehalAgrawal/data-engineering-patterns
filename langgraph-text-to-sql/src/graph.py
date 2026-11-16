@@ -14,6 +14,7 @@ from typing import TypedDict
 import psycopg
 import sqlglot
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
 from . import db, guard
 from .llm import chat, extract_sql
@@ -50,8 +51,12 @@ class State(TypedDict, total=False):
 
 
 def build(llm: Callable[[str, list[dict]], tuple[str, float]] = chat, schema_loader=db.schema_text,
-          explain=db.explain, run=db.run):
-    """Compile the graph. The model call and database functions can be swapped out (tests use fakes)."""
+          explain=db.explain, run=db.run, approval: bool = False, **compile_options):
+    """Compile the graph. The model call and database functions can be swapped out (tests use fakes).
+
+    approval=True adds a human approval step before the SQL runs. It pauses the graph with interrupt(), so it
+    needs a checkpointer (compile_options go to StateGraph.compile, for example checkpointer=InMemorySaver()).
+    Resume with Command(resume="approve"); any other value refuses the query."""
 
     def generate_sql(state: State) -> State:
         schema = state.get("schema") or schema_loader()
@@ -92,6 +97,13 @@ def build(llm: Callable[[str, list[dict]], tuple[str, float]] = chat, schema_loa
         return {"outcome": "answered", "columns": columns, "rows": rows,
                 "trace": state["trace"] + [{"step": "execute", "rows": len(rows)}]}
 
+    def approve(state: State) -> State:
+        # Everything before interrupt() runs again on resume: LangGraph restarts the node from the top.
+        decision = interrupt({"question": state["question"], "sql": state["sql"]})
+        if decision != "approve":
+            return {"outcome": "refused", "trace": state["trace"] + [{"step": "approve", "refused": str(decision)}]}
+        return {"trace": state["trace"] + [{"step": "approve", "ok": True}]}
+
     def give_up(state: State) -> State:
         return {"outcome": "failed", "trace": state["trace"] + [{"step": "give_up", "attempts": state["attempts"]}]}
 
@@ -103,16 +115,21 @@ def build(llm: Callable[[str, list[dict]], tuple[str, float]] = chat, schema_loa
     graph.add_node("check_sql", check_sql)
     graph.add_node("execute", execute)
     graph.add_node("give_up", give_up)
+    after_check = "approve" if approval else "execute"
+    if approval:
+        graph.add_node("approve", approve)
+        graph.add_conditional_edges("approve", lambda s: "refused" if s.get("outcome") == "refused" else "ok",
+                                    {"refused": END, "ok": "execute"})
     graph.add_edge(START, "generate_sql")
     graph.add_conditional_edges("generate_sql", lambda s: "refused" if s.get("outcome") == "refused" else "check",
                                 {"refused": END, "check": "check_sql"})
     graph.add_conditional_edges("check_sql",
                                 lambda s: "refused" if s.get("outcome") == "refused" else (after_error(s) if s.get("error") else "ok"),
-                                {"refused": END, "repair": "generate_sql", "give_up": "give_up", "ok": "execute"})
+                                {"refused": END, "repair": "generate_sql", "give_up": "give_up", "ok": after_check})
     graph.add_conditional_edges("execute", lambda s: after_error(s) if s.get("error") else "done",
                                 {"repair": "generate_sql", "give_up": "give_up", "done": END})
     graph.add_edge("give_up", END)
-    return graph.compile()
+    return graph.compile(**compile_options)
 
 
 def ask(question: str, model: str, max_repairs: int = 2, app=None) -> State:

@@ -75,3 +75,40 @@ def test_the_guard_stops_a_write_the_model_produced_and_it_is_never_repaired():
     explain, _ = fake_db()
     state = ask("Delete all events", "fake", app=build(llm, lambda: "schema", explain, lambda sql: ran.append(sql)))
     assert state["outcome"] == "refused" and ran == [] and len(calls) == 1
+
+
+def _approval_app(executed):
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    llm, _ = scripted("```sql\nSELECT count(*) FROM packages WHERE delivered_at IS NULL\n```")
+    explain, _ = fake_db()
+
+    def run(sql):
+        executed.append(sql)
+        return ["count"], [(457,)]
+
+    return build(llm, lambda: "schema", explain, run, approval=True, checkpointer=InMemorySaver())
+
+
+def test_approval_pauses_before_execute_and_runs_only_after_approve():
+    from langgraph.types import Command
+
+    executed = []
+    app = _approval_app(executed)
+    config = {"configurable": {"thread_id": "t1"}}
+    result = app.invoke({"question": "?", "model": "fake", "max_repairs": 2, "trace": []}, config)
+    assert app.get_state(config).next == ("approve",) and executed == []
+    assert "packages" in result["__interrupt__"][0].value["sql"]
+    state = app.invoke(Command(resume="approve"), config)
+    assert state["outcome"] == "answered" and len(executed) == 1
+
+
+def test_rejected_query_never_runs():
+    from langgraph.types import Command
+
+    executed = []
+    app = _approval_app(executed)
+    config = {"configurable": {"thread_id": "t2"}}
+    app.invoke({"question": "?", "model": "fake", "max_repairs": 2, "trace": []}, config)
+    state = app.invoke(Command(resume="reject"), config)
+    assert state["outcome"] == "refused" and executed == []

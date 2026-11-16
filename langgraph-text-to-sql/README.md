@@ -53,7 +53,7 @@ ollama pull qwen2.5:3b && ollama pull llama3.2:3b
 
 python ask.py "Which destination city received the most packages?"
 python scripts/evaluate.py                  # both models, 36 questions each, a few minutes
-python -m pytest -q                         # 36 tests; no model needed
+python -m pytest -q                         # 38 tests; no model needed
 ```
 
 `ask.py` prints every step: the SQL, the guard and `EXPLAIN` check, any error and repair, and the rows. To stop: `docker compose down -v`.
@@ -88,7 +88,8 @@ Recorded on 2026-11-16 (UTC) on an Apple silicon Mac:
 |---|---|---|
 | Questions whose query hit an error, so a repair ran | 3 | 1 |
 | ...of which the repair fixed | 0 | 0 |
-| Wrong answers from a query that ran without error (never repaired) | 6 | 8 |
+| Wrong answers whose query never produced an error (the loop never saw them) | 5 | 7 |
+| Wrong answers after a repair turned an error into a query that ran | 1 | 1 |
 | Failed after all repairs | 2 | 0 |
 | Model time per question | median 0.4 s, max 2.1 s | median 0.4 s, max 2.4 s |
 
@@ -100,7 +101,7 @@ The maximum time is the first question, which loads the model.
 - **The wrong SQL dialect, repeated.** `qwen2.5:3b` wrote SQLite functions (`IIF`, `julianday`). On a06 it sent the identical query three times, a nested aggregate inside `IIF`, despite the same error each time. On t02 it went from `julianday` to an invalid cast and back to `julianday`. Repairs cannot teach a model a function it does not know.
 - **Aggregation logic.**
   - `COUNT(DISTINCT country) … GROUP BY country` returned one row per country instead of a number, in both models (a08).
-  - A percentage was left as a fraction, 0.8 instead of 84.8 (a06, llama).
+  - A percentage was left as a fraction and rounded to one decimal place: 0.848 became 0.8, instead of 84.8 (a06, llama).
   - "Devices per country" counted companies instead of devices (j02, llama).
 - **Ties.** "The companies with the most undelivered packages" has two answers. One model kept only one (`LIMIT 1`); the other listed all 12 companies (j03).
 - **Time handling.**
@@ -128,13 +129,41 @@ Every other wrong answer ran without an error, so the loop never saw it.
 
 `llama3.2:3b` never followed the prompt's instruction to refuse. It wrote the write statement, and the guard stopped it every time. A prompt is not a safety control. After both runs, every table had the same number of rows as before.
 
-**Tests.** `python -m pytest -q` passes 36 tests in under a second, with no model:
+**Tests.** `python -m pytest -q` passes 38 tests in under a second, with no model:
 - **The guard:** 4 allowed queries and 13 rejected ones.
 - **SQL extraction:** 8 reply shapes, including an unclosed code block.
-- **The graph's control flow,** with a scripted fake model: repair, give up, refusal, and a guard-stopped write that is never repaired.
+- **The graph's control flow,** with a scripted fake model: repair, give up, refusal, a guard-stopped write that is never repaired, and the approval step (nothing runs until approved; a rejected query never runs).
 - **The read-only user,** against PostgreSQL: four kinds of writes rejected.
 
 CI runs the same tests against a freshly seeded PostgreSQL.
+
+## What LangGraph itself adds (no model needed)
+
+[`scripts/langgraph_features.py`](scripts/langgraph_features.py) shows five framework behaviours with a scripted fake model and fake database, so it needs neither Ollama nor PostgreSQL:
+
+```bash
+python scripts/langgraph_features.py              # about 10 seconds
+python scripts/langgraph_features.py --only pause # one of: stream, pause, merge, recursion, overhead
+```
+
+Recorded on 2026-11-16 with LangGraph 1.2.19 and `langgraph-checkpoint` 4.3.2, Python 3.12.13, Apple M4 Pro (on battery):
+
+- **Streaming steps.** `stream_mode="updates"` yields one event per finished node: `generate_sql`, `check_sql` (error), `generate_sql` (repair), `check_sql`, `execute`.
+- **Human approval.** `build(..., approval=True, checkpointer=InMemorySaver())` adds an `approve` node that calls `interrupt()` with the question and the SQL.
+  - The run stops with `next=('approve',)`, and nothing has run against the database.
+  - `Command(resume="approve")` continues from the checkpoint, without calling the model again, and runs the query. Any other value ends the run as refused.
+  - A node that pauses runs again from its first line when it resumes. A side effect placed before `interrupt()` ran twice for one approval.
+  - The documentation recommends `interrupt()` over the compile-time `interrupt_before` for human-in-the-loop workflows, and both need a checkpointer.
+- **State merging.** A node's return value replaces a state key unless the key has a reducer. Two nodes that each return `{"trace": [...]}` left only the second entry; with `Annotated[list, operator.add]` they appended. This graph builds its trace by hand (`state["trace"] + [...]`) instead.
+- **The recursion limit is a backstop, not a budget.** With the graph's own repair cap removed and a model that never fixes its query, LangGraph's default limit (10,007 steps since 1.1.4) stopped the run after **5,004 model calls**. At this example's median of 0.4 s per call, that is over half an hour of model time for one question. With `recursion_limit=25`, it stopped after 13. Keep a cap in the graph (`max_repairs`) and set `recursion_limit` too.
+- **Overhead.** Median time per question, 2,000 runs, with the guard and SQL parsing included in both:
+
+  | | plain Python loop | compiled graph | compile, then run |
+  |---|---|---|---|
+  | answered on the first try | 129 µs | 647 µs | 1,668 µs |
+  | one repair | 273 µs | 1,084 µs | 2,101 µs |
+
+  The graph adds about 0.5–0.8 ms per question, including its trace bookkeeping. Against a median model call of 0.4 s, that is under 0.3%. Compile the graph once, not per request. Two runs agreed within 5%.
 
 ## Limitations
 
