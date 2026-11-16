@@ -12,7 +12,7 @@ Part of [snehalagrawal.com/work](https://snehalagrawal.com/work/). Each example 
 | [`druid-superset-dashboards/`](druid-superset-dashboards/) | SQL-based batch ingestion into Druid, raw and rolled up by hour (measured rows, storage, sketch accuracy, query time), with a Superset dashboard created from code | Ready (from [data-visualization-druid-superset](https://github.com/SnehalAgrawal/data-visualization-druid-superset)) |
 | [`spark-postgres-etl/`](spark-postgres-etl/) | Spark extracting a 3-million-row PostgreSQL table: parallel JDBC reads (measured 3× faster), date-partitioned Parquet with pruning, and incremental loads with a watermark | Ready (Spark part of [ai-analytics-postgres-spark-weaviate](https://github.com/SnehalAgrawal/ai-analytics-postgres-spark-weaviate)) |
 | [`langgraph-text-to-sql/`](langgraph-text-to-sql/) | A LangGraph agent that answers plain-English questions with SQL over PostgreSQL: a SQL guard, a read-only database user, and a repair loop; accuracy measured on 30 questions with local models, and every write request stopped | Ready |
-| `databricks-delta-medallion/` | Bronze, silver, and gold Delta tables on Databricks | Planned |
+| [`databricks-delta-medallion/`](databricks-delta-medallion/) | Bronze, silver, and gold Delta Lake tables: idempotent ingestion, rejected rows set aside, `MERGE` upserts with schema evolution, time travel, and `OPTIMIZE`; the same code runs on open-source Spark in Docker and as a serverless job on Databricks, with identical counts | Ready |
 
 ## Conventions
 

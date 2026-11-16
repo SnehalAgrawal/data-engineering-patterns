@@ -1,0 +1,39 @@
+# Deploys the same pipeline as a serverless job (Databricks Free Edition works: serverless only).
+#   databricks bundle deploy
+#   databricks bundle run medallion --params batch=1
+# The schema and the raw volume are created by the job itself (CREATE ... IF NOT EXISTS); see the README for uploading the batches.
+bundle:
+  name: delta-medallion
+
+variables:
+  catalog:
+    description: Unity Catalog catalog to write to (must exist; check yours under Catalog in the workspace)
+    default: workspace
+  schema:
+    description: Schema for the bronze, silver, and gold tables, and the raw volume
+    default: medallion
+
+resources:
+  jobs:
+    medallion:
+      name: delta-medallion
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: batch
+          default: "1"
+        - name: features
+          default: "false"
+      tasks:
+        # A notebook task: on serverless, Python files under /Workspace failed to load with an I/O error
+        # (2026-11-16; see the README), while notebooks load through a different path.
+        - task_key: medallion
+          notebook_task:
+            notebook_path: ./pipeline/run_databricks.py
+
+targets:
+  dev:
+    mode: development
+    default: true

@@ -1,0 +1,49 @@
+# Lint and an end-to-end check for databricks-delta-medallion: builds the Spark + Delta Lake image, generates the
+# three batches, and runs pipeline/verify.py (every count it asserts follows from the generator's seed).
+# Runs on open-source Spark and Delta Lake; no Databricks account is used in CI.
+name: databricks-delta-medallion
+
+on:
+  push:
+    paths:
+      - databricks-delta-medallion/**
+      - ruff.toml
+      - .github/workflows/databricks-delta-medallion.yml
+  pull_request:
+    paths:
+      - databricks-delta-medallion/**
+      - ruff.toml
+      - .github/workflows/databricks-delta-medallion.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: databricks-delta-medallion
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Lint with the repository's Ruff config
+        working-directory: .
+        run: pip install -r requirements-dev.txt && ruff check .
+
+      - name: Build the Spark 4.2.0 + Delta Lake 4.4.1 image
+        run: docker compose build
+
+      - name: Generate the three batches (fixed seed)
+        run: python3 scripts/generate_batches.py
+
+      # The container runs as the image's spark user; let it write the warehouse next to the raw data
+      - run: chmod -R a+rwX data
+
+      - name: Batches 1, 2, 2 again, and 3, then the Delta features, with expected counts
+        run: docker compose run --rm spark pipeline/verify.py

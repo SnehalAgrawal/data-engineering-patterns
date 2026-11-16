@@ -2,9 +2,9 @@
 # Run from the repository root: ruff check .   (or: npm run lint:py)
 target-version = "py310"
 line-length = 120
-# Each example's python/ folder (and langgraph-text-to-sql/src) holds its own local modules,
+# Each example's python/ folder (and langgraph-text-to-sql/src, databricks-delta-medallion/pipeline) holds its own local modules,
 # so import sorting groups them as first-party.
-src = ["*/python", "langgraph-text-to-sql"]
+src = ["*/python", "langgraph-text-to-sql", "databricks-delta-medallion"]
 
 [lint]
 # pycodestyle errors and warnings, Pyflakes, import order, bugbear (likely bugs), pyupgrade

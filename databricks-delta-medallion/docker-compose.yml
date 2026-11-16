@@ -1,0 +1,14 @@
+# Local run of the medallion pipeline: Spark 4.2.0 + Delta Lake 4.4.1, no other services.
+#   docker compose run --rm spark pipeline/run_local.py --batch 1
+services:
+  spark:
+    build: ./spark
+    image: databricks-delta-medallion/spark:4.2.0-delta4.4.1
+    volumes:
+      - ./pipeline:/app/pipeline:ro
+      - ./data:/data
+    working_dir: /app
+    environment:
+      PYTHONPATH: /app
+    entrypoint: ["/opt/spark/bin/spark-submit", "--master", "local[*]", "--driver-memory", "2g",
+                 "--driver-java-options", "-Dderby.system.home=/data"]
